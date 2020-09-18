@@ -6,7 +6,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MimicAPI.Database;
+using MimicAPI.Helpers;
 using MimicAPI.Models;
+using Newtonsoft.Json;
 
 namespace MimicAPI.Controllers
 {
@@ -21,14 +23,35 @@ namespace MimicAPI.Controllers
 
         [Route("")]
         [HttpGet]
-        public ActionResult ObterTodas(string? data)
+        public ActionResult ObterTodas(string? data, int? pagNum, int? pagRegisto)
         {
             var item = _db.Palavras.FromSqlRaw("Select * from Palavras");
 
+            //Obter palavras a partir de determinada data
             if (data != null)
             {               
                 item = _db.Palavras.FromSqlRaw($"Select * from Palavras where DataCriacao >'{data}';");
-            }   
+            }
+
+            //Criar Paginação
+            if (pagNum.HasValue)
+            {
+                var qtdtotal = item.Count();
+
+                item = item.Skip((pagNum.Value -1) * pagRegisto.Value).Take(pagRegisto.Value);
+                var paginacao = new Pagination();
+                paginacao.NumPagina = pagNum.Value;
+                paginacao.RegistoPorPagina = pagRegisto.Value;
+                paginacao.TotalRegistos = qtdtotal;
+                paginacao.TotalPaginas = (int)Math.Ceiling((double)paginacao.TotalRegistos/pagRegisto.Value);
+
+                Response.Headers.Add("X-Pagination", JsonConvert.SerializeObject(paginacao));
+
+                if(pagNum > paginacao.TotalPaginas)
+                {
+                    return NotFound();
+                }
+            }
 
             return Ok(item);
         }
