@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MimicAPI.Database;
 using MimicAPI.Helpers;
 using MimicAPI.Models;
+using MimicAPI.Repositories.Contracts;
 using Newtonsoft.Json;
 
 namespace MimicAPI.Controllers
@@ -15,45 +15,26 @@ namespace MimicAPI.Controllers
     [Route("api/palavras")]  
     public class PalavraController : ControllerBase
     {
-        private readonly MimicContext _db;
-        public PalavraController(MimicContext db)
+        private readonly IPalavraRepository _repository;
+        public PalavraController(IPalavraRepository repository)
         {
-            _db = db;
+            _repository = repository;
         }
 
         [Route("")]
         [HttpGet]
-        public ActionResult ObterTodas(string? data, int? pagNum, int? pagRegisto)
+        public ActionResult ObterTodas([FromQuery]PalavraUrlQuery query)
         {
-            var item = _db.Palavras.FromSqlRaw("Select * from Palavras");
 
-            //Obter palavras a partir de determinada data
-            if (data != null)
-            {               
-                item = _db.Palavras.FromSqlRaw($"Select * from Palavras where DataCriacao >'{data}';");
-            }
+            var item = _repository.ObterPalavras(query);
 
-            //Criar Paginação
-            if (pagNum.HasValue)
+            if (query.PagNum > item.Pagination.TotalPaginas)
             {
-                var qtdtotal = item.Count();
-
-                item = item.Skip((pagNum.Value -1) * pagRegisto.Value).Take(pagRegisto.Value);
-                var paginacao = new Pagination();
-                paginacao.NumPagina = pagNum.Value;
-                paginacao.RegistoPorPagina = pagRegisto.Value;
-                paginacao.TotalRegistos = qtdtotal;
-                paginacao.TotalPaginas = (int)Math.Ceiling((double)paginacao.TotalRegistos/pagRegisto.Value);
-
-                Response.Headers.Add("X-Pagination", JsonConvert.SerializeObject(paginacao));
-
-                if(pagNum > paginacao.TotalPaginas)
-                {
-                    return NotFound();
-                }
+                return NotFound();
             }
+            Response.Headers.Add("X-Pagination", JsonConvert.SerializeObject(item.Pagination));
 
-            return Ok(item);
+            return Ok(item.ToList());
         }
 
 
@@ -64,12 +45,12 @@ namespace MimicAPI.Controllers
         [HttpGet]
         public ActionResult Obter(int id)
         {
-            var obj = _db.Palavras.Find(id);
+            var obj = _repository.Obter(id);
 
             if (obj == null)
                 return NotFound();
 
-            return Ok(_db.Palavras.Find(id));
+            return Ok(obj);
         }
 
 
@@ -80,8 +61,7 @@ namespace MimicAPI.Controllers
         [HttpPost]
         public ActionResult InserirPalavra([FromBody]Palavra palavra)
         {
-            _db.Palavras.Add(palavra);   
-            _db.SaveChanges();
+            _repository.Inserir(palavra);
             return Created($"/api/Palavras/{palavra.Id}", palavra);
         }
 
@@ -90,14 +70,13 @@ namespace MimicAPI.Controllers
         [HttpPut]
         public ActionResult UpdatePalavra(int id, [FromBody]Palavra palavra)
         {
-            var obj = _db.Palavras.AsNoTracking().FirstOrDefault(a => a.Id == id);
+            var obj = _repository.Obter(id);
 
             if (obj == null)
                 return NotFound();
 
             palavra.Id = id;
-            _db.Palavras.Update(palavra);
-            _db.SaveChanges();
+            _repository.Atualizar(palavra);
 
             return Ok();
         }
@@ -106,13 +85,12 @@ namespace MimicAPI.Controllers
         [HttpDelete]
         public ActionResult DeletePalavra(int id)
         {
-            var obj = _db.Palavras.Find(id);
+            var obj = _repository.Obter(id);
 
             if (obj == null)
                 return NotFound();
-
-            _db.Palavras.Remove(_db.Palavras.Find(id));
-            _db.SaveChanges();
+            _repository.Eliminar(id);
+          
             return NoContent();
         }
     }
